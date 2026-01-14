@@ -1,0 +1,33 @@
+site_name: "Best Coins Ever"
+base_url: "https://bestcoinsever.com"
+default_description: "Rare coins, coin values, errors, and practical collecting tips."
+language: "en"
+
+slots_enabled: false     # up/middle/down
+promo_enabled: false     # recomendations
+analytics_enabled: false
+
+posts_per_page: 12
+
+nav:
+  - title: "Home"
+    url: "/"
+  - title: "Coin Values"
+    url: "/category/coin-values/"
+  - title: "Rare Coins"
+    url: "/category/rare-coins/"
+  - title: "Errors"
+    url: "/category/errors/"
+  - title: "FAQ"
+    url: "/faq/"
+  - title: "About"
+    url: "/about/"
+  - title: "Contact"
+    url: "/contact/"
+
+# Link's titles (now empty)
+promo_links:
+  tool_1_url: ""
+  tool_2_url: ""
+  market_1_url: ""
+  book_1_url: ""
