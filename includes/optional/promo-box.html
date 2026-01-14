@@ -1,0 +1,12 @@
+{% if site.promo_enabled %}
+<section class="promo-box" aria-label="Recommendations">
+  <h3>Recommended Tools</h3>
+  <p class="muted">Optional resources collectors often use.</p>
+  <ul class="promo-list">
+    {% if site.promo_links.tool_1_url %}<li><a href="{{ site.promo_links.tool_1_url }}" target="_blank" rel="nofollow sponsored noopener">Magnifier</a></li>{% endif %}
+    {% if site.promo_links.tool_2_url %}<li><a href="{{ site.promo_links.tool_2_url }}" target="_blank" rel="nofollow sponsored noopener">Scale</a></li>{% endif %}
+    {% if site.promo_links.market_1_url %}<li><a href="{{ site.promo_links.market_1_url }}" target="_blank" rel="nofollow sponsored noopener">Sold listings</a></li>{% endif %}
+    {% if site.promo_links.book_1_url %}<li><a href="{{ site.promo_links.book_1_url }}" target="_blank" rel="nofollow sponsored noopener">Collector guide</a></li>{% endif %}
+  </ul>
+</section>
+{% endif %}
