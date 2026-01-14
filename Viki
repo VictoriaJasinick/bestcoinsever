@@ -1,0 +1,48 @@
+Structure:
+
+bestcoinsever/
+├─ site.yaml
+├─ requirements.txt
+├─ build.py
+├─ README.md
+├─ content/
+│  ├─ pages/
+│  │  ├─ home.md
+│  │  ├─ about.md
+│  │  ├─ contact.md
+│  │  ├─ faq.md
+│  │  ├─ privacy-policy.md
+│  │  ├─ disclaimer.md
+│  │  ├─ cookie-policy.md
+│  │  └─ 404.md
+│  ├─ categories/
+│  │  ├─ coin-values.md
+│  │  ├─ rare-coins.md
+│  │  └─ errors.md
+│  └─ posts/
+│     └─ sample-post.md
+├─ templates/
+│  ├─ base.html
+│  ├─ post.html
+│  └─ list.html
+├─ includes/
+│  ├─ head.html
+│  ├─ header.html
+│  ├─ footer.html
+│  ├─ cookie-banner.html
+│  ├─ optional/
+│  │  ├─ slot-top.html
+│  │  ├─ slot-mid.html
+│  │  ├─ slot-bottom.html
+│  │  └─ promo-box.html
+│  └─ widgets/
+│     └─ related.html
+└─ static/
+   ├─ css/
+   │  └─ style.css
+   ├─ js/
+   │  ├─ cookie.js
+   │  └─ search.js
+   ├─ images/
+   └─ audio/
+
