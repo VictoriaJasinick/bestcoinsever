@@ -1,0 +1,10 @@
+{% if related and related|length > 0 %}
+<section class="related">
+  <h2>Related Articles</h2>
+  <ul class="related-list">
+    {% for r in related %}
+      <li><a href="{{ r.url }}">{{ r.title }}</a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
