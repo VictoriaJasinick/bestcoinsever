@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="{{ site.language }}">
+  <head>
+    {% include "head.html" %}
+  </head>
+  <body>
+    {% include "header.html" %}
+
+    <main class="container">
+      {{ body | safe }}
+    </main>
+
+    {% include "footer.html" %}
+    {% include "cookie-banner.html" %}
+
+    <script defer src="/static/js/cookie.js"></script>
+    <script defer src="/static/js/search.js"></script>
+  </body>
+</html>
