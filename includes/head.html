@@ -1,0 +1,30 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page.meta_title or page.title or site.site_name }}</title>
+<meta name="description" content="{{ page.meta_description or page.description or site.default_description }}">
+<link rel="canonical" href="{{ page.canonical_url }}">
+
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="icon" href="/static/images/favicon.ico">
+
+<meta property="og:site_name" content="{{ site.site_name }}">
+<meta property="og:title" content="{{ page.meta_title or page.title or site.site_name }}">
+<meta property="og:description" content="{{ page.meta_description or page.description or site.default_description }}">
+<meta property="og:type" content="website">
+<meta property="og:url" content="{{ page.canonical_url }}">
+{% if page.cover_image %}<meta property="og:image" content="{{ site.base_url }}{{ page.cover_image }}">{% endif %}
+
+{% if site.analytics_enabled %}
+<script>
+  // analytics goes here later
+</script>
+{% endif %}
+
+<script type="application/ld+json">
+{
+  "@context":"https://schema.org",
+  "@type":"WebSite",
+  "name":"{{ site.site_name }}",
+  "url":"{{ site.base_url }}"
+}
+</script>
