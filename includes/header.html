@@ -1,0 +1,16 @@
+<header class="header">
+  <div class="container header-inner">
+    <a class="logo" href="/">{{ site.site_name }}</a>
+
+    <nav class="nav" aria-label="Primary">
+      {% for link in site.nav %}
+        <a class="nav-link" href="{{ link.url }}">{{ link.title }}</a>
+      {% endfor %}
+    </nav>
+
+    <div class="search">
+      <input id="site-search-input" type="search" placeholder="Search…" aria-label="Search the site">
+      <div id="site-search-results" class="search-results" aria-label="Search results"></div>
+    </div>
+  </div>
+</header>
