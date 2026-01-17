@@ -192,8 +192,8 @@ def main():
 
         validate_slug(slug, f.name)
 
-        if slug in used_slugs:
-            raise ValueError(f"Duplicate slug '{slug}' found (file: {f.name})")
+        if slug in used_slugs and f.name != "404.md":
+            raise ValueError(f"Duplicate slug '{slug}' found (page file: {f.name})")
         used_slugs.add(slug)
 
         cat_key = (fm.get("category") or "").strip()
@@ -285,7 +285,7 @@ def main():
                 raise ValueError(f"Empty slug is only allowed for index.md (file: {f.name})")
         else:
             validate_slug(slug, f.name)
-            if slug in used_slugs:
+            
                 raise ValueError(f"Duplicate slug '{slug}' found (page file: {f.name})")
             used_slugs.add(slug)
 
