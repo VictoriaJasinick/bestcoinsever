@@ -26,7 +26,14 @@ def parse_frontmatter(text: str):
             fm = yaml.safe_load(fm_raw) or {}
             return fm, body
     return {}, text
-
+def slugify_title(title: str) -> str:
+    if not title:
+        return ""
+    s = title.strip().lower()
+    s = re.sub(r"[^a-z0-9\s-]+", "", s)
+    s = re.sub(r"\s+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return s
 def env():
     return Environment(
         loader=FileSystemLoader([str(ROOT / "templates"), str(ROOT / "includes")]),
