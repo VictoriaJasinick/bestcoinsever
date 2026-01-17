@@ -240,7 +240,7 @@ def main() -> None:
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "page": {**meta, "date": normalize_date(meta.get("date"))},
+                "page": {**meta, "title": title, "date": normalize_date(meta.get("date"))},
                 "title": title,
                 "page_title": title,
                 "description": description or site.description,
@@ -294,7 +294,7 @@ def main() -> None:
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "page": {**meta, "date": post_date},
+                "page": {**meta, "title": title, "date": post_date},
                 "post": post_obj,
                 "title": title,
                 "page_title": title,
@@ -310,7 +310,6 @@ def main() -> None:
             write_text(output_path_for_slug(slug), render(env, "post.html", ctx))
             sitemap_urls.append(canon)
 
-    # сортировка постов по дате-строке (без падений)
     posts.sort(key=lambda x: (x.get("date", ""), x.get("title", "")), reverse=True)
 
     # ---------- Home ----------
@@ -319,6 +318,12 @@ def main() -> None:
         "site": site.__dict__,
         "categories": categories,
         "posts": posts,
+        "page": {
+            "title": site.site_name,
+            "description": site.description,
+            "slug": "",
+            "date": "",
+        },
         "title": site.site_name,
         "page_title": site.site_name,
         "description": site.description,
@@ -331,7 +336,7 @@ def main() -> None:
     }
     write_text(DIST_DIR / "index.html", render(env, home_template, home_ctx))
 
-    # ---------- Category pages (optional, if you want) ----------
+    # ---------- Category pages ----------
     posts_by_cat: Dict[str, List[Dict[str, Any]]] = {}
     for p in posts:
         posts_by_cat.setdefault(p.get("category") or "", []).append(p)
@@ -351,12 +356,19 @@ def main() -> None:
                 out = DIST_DIR / "category" / slug / "page" / str(i) / "index.html"
 
             canon = canonical(site.base_url, rel)
+
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
                 "posts": chunk,
                 "category": cat,
                 "current_category": cat,
+                "page": {
+                    "title": cat["title"],
+                    "description": cat.get("description") or site.description,
+                    "slug": f"category/{slug}",
+                    "date": "",
+                },
                 "title": f"{cat['title']} - {site.site_name}",
                 "page_title": f"{cat['title']} - {site.site_name}",
                 "description": cat.get("description") or site.description,
