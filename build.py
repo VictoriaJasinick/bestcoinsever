@@ -51,6 +51,19 @@ def slugify_title(title: str) -> str:
     return s
 
 
+def normalize_date(value):
+    """
+    Convert YAML-parsed date/datetime or any other value into a comparable ISO string.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime.datetime):
+        return value.date().isoformat()
+    if isinstance(value, datetime.date):
+        return value.isoformat()
+    return str(value).strip()
+
+
 def validate_slug(slug: str, filename: str):
     if slug is None:
         raise ValueError(f"Slug is None in file: {filename}")
@@ -186,6 +199,8 @@ def main():
         cat_key = (fm.get("category") or "").strip()
         cat = category_map.get(cat_key)
 
+        date_str = normalize_date(fm.get("date", ""))
+
         posts.append(
             {
                 "title": fm.get("title", ""),
@@ -198,7 +213,7 @@ def main():
                     "meta_description",
                     fm.get("description", site["default_description"]),
                 ),
-                "date": fm.get("date", ""),
+                "date": date_str,
                 "category": cat_key,
                 "category_title": cat["title"] if cat else "",
                 "category_url": f"/category/{cat['slug']}/" if cat else "",
