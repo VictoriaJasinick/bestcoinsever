@@ -6,4 +6,4 @@ category: values
 tags: [test]
 ---
 
-This is a test page to verify that the generator creates slugs from the title and that the page appears on the site.
+This is a test page.
