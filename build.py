@@ -24,65 +24,10 @@ def parse_frontmatter(text: str):
         end = text.find("\n---", 3)
         if end != -1:
             fm_raw = text[3:end].strip()
-            body = text[end + 4:].lstrip("\n")
+            body = text[end + 4 :].lstrip("\n")
             fm = yaml.safe_load(fm_raw) or {}
             return fm, body
     return {}, text
-
-
-def slugify_title(title: str) -> str:
-    if not title:
-        return ""
-    s = title.strip().lower()
-    s = re.sub(r"[^a-z0-9\s-]+", "", s)
-    s = re.sub(r"\s+", "-", s)
-    s = re.sub(r"-{2,}", "-", s).strip("-")
-    return s
-
-
-def validate_slug(slug: str, filename: str):
-    if not slug:
-        raise ValueError(f"Missing slug and cannot generate from title in file: {filename}")
-
-    if slug in {"404"}:
-        # reserved for the 404 page only
-        pass
-
-    if re.search(r"[^a-z0-9/-]", slug):
-        raise ValueError(
-            f"Invalid slug '{slug}' in file: {filename} (allowed: a-z, 0-9, '-', '/')"
-        )
-
-    if "//" in slug or slug.startswith("/") or slug.endswith("/"):
-        raise ValueError(
-            f"Invalid slug '{slug}' in file: {filename} (no leading/trailing '/', no '//')"
-        )
-
-
-def ensure_unique_slug(slug: str, used: set[str]) -> str:
-    if slug not in used:
-        return slug
-    i = 2
-    while f"{slug}-{i}" in used:
-        i += 1
-    return f"{slug}-{i}"
-
-
-def auto_slug(fm: dict, fallback: str, used: set[str], allow_empty: bool = False) -> str:
-    raw = (fm.get("slug") or "").strip()
-    if raw:
-        slug = raw.strip("/")
-    else:
-        title = (fm.get("title") or "").strip()
-        slug = slugify_title(title) or slugify_title(fallback)
-
-    if slug == "" and allow_empty:
-        return ""
-
-    slug = slug.strip("/")
-    slug = ensure_unique_slug(slug, used)
-    used.add(slug)
-    return slug
 
 
 def env():
@@ -128,7 +73,7 @@ def split_middle(html: str):
         return html, ""
     cut_para = max(2, len(ends) // 3)
     cut_idx = ends[cut_para - 1]
-    return "".join(parts[:cut_idx + 1]), "".join(parts[cut_idx + 1:])
+    return "".join(parts[: cut_idx + 1]), "".join(parts[cut_idx + 1 :])
 
 
 def paginate(items, per_page):
@@ -136,7 +81,7 @@ def paginate(items, per_page):
     pages = max(1, math.ceil(total / per_page))
     for page in range(1, pages + 1):
         start = (page - 1) * per_page
-        yield page, pages, items[start:start + per_page]
+        yield page, pages, items[start : start + per_page]
 
 
 def related(posts, cur, limit=5):
@@ -156,6 +101,57 @@ def related(posts, cur, limit=5):
     return [p for _, p in scored[:limit]]
 
 
+def slugify_title(title: str) -> str:
+    if not title:
+        return ""
+    s = title.strip().lower()
+    s = re.sub(r"[^a-z0-9\s-]+", "", s)
+    s = re.sub(r"\s+", "-", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return s
+
+
+def validate_slug(slug: str, *, context: str):
+    if slug in ("", "404"):
+        return
+    if re.search(r"[^a-z0-9/-]", slug):
+        raise ValueError(
+            f"Invalid slug '{slug}' in {context} (allowed: a-z, 0-9, '-', '/')"
+        )
+    if "//" in slug or slug.startswith("/") or slug.endswith("/"):
+        raise ValueError(
+            f"Invalid slug '{slug}' in {context} (no leading/trailing '/', no '//')"
+        )
+
+
+def ensure_unique_slug(slug: str, used: set[str]) -> str:
+    if slug == "" or slug is None:
+        return ""
+    if slug not in used:
+        return slug
+    i = 2
+    while f"{slug}-{i}" in used:
+        i += 1
+    return f"{slug}-{i}"
+
+
+def pick_slug(fm: dict, fallback: str, used: set[str], *, context: str) -> str:
+    raw = (fm.get("slug") or "").strip().strip("/")
+    if raw:
+        slug = raw
+    else:
+        title = (fm.get("title") or "").strip()
+        slug = slugify_title(title) or slugify_title(fallback)
+
+    if not slug:
+        raise ValueError(f"Missing slug and cannot generate one in {context}")
+
+    validate_slug(slug, context=context)
+    slug = ensure_unique_slug(slug, used)
+    used.add(slug)
+    return slug
+
+
 def main():
     site = load_site()
     j = env()
@@ -170,8 +166,6 @@ def main():
 
     build_year = str(datetime.date.today().year)
 
-    used_slugs: set[str] = set(["", "404"])
-
     # categories
     category_map = {}
     for f in (CONTENT / "categories").glob("*.md"):
@@ -184,6 +178,8 @@ def main():
                 "description": fm.get("description", ""),
             }
 
+    used_slugs: set[str] = set(["", "404"])
+
     # posts
     posts = []
     for f in sorted((CONTENT / "posts").glob("*.md")):
@@ -191,30 +187,38 @@ def main():
         html = m.convert(body)
         m.reset()
 
-        slug = auto_slug(fm, fallback=f.stem, used=used_slugs, allow_empty=False)
-        validate_slug(slug, f.name)
+        slug = pick_slug(
+            fm=fm,
+            fallback=f.stem,
+            used=used_slugs,
+            context=f"post file: {f.as_posix()}",
+        )
 
         cat_key = fm.get("category", "")
         cat = category_map.get(cat_key)
 
-        posts.append({
-            "title": fm.get("title", ""),
-            "slug": slug,
-            "url": f"/{slug}/",
-            "canonical_url": canonical(site["base_url"], slug),
-            "description": fm.get("description", site["default_description"]),
-            "meta_title": fm.get("meta_title", fm.get("title", site["site_name"])),
-            "meta_description": fm.get("meta_description", fm.get("description", site["default_description"])),
-            "date": fm.get("date", ""),
-            "category": cat_key,
-            "category_title": cat["title"] if cat else "",
-            "category_url": f"/category/{cat['slug']}/" if cat else "",
-            "tags": fm.get("tags", []),
-            "cover_image": fm.get("cover_image", ""),
-            "cover_alt": fm.get("cover_alt", ""),
-            "promo": bool(fm.get("promo", False)),
-            "html": html,
-        })
+        posts.append(
+            {
+                "title": fm.get("title", ""),
+                "slug": slug,
+                "url": f"/{slug}/",
+                "canonical_url": canonical(site["base_url"], slug),
+                "description": fm.get("description", site["default_description"]),
+                "meta_title": fm.get("meta_title", fm.get("title", site["site_name"])),
+                "meta_description": fm.get(
+                    "meta_description", fm.get("description", site["default_description"])
+                ),
+                "date": fm.get("date", ""),
+                "category": cat_key,
+                "category_title": cat["title"] if cat else "",
+                "category_url": f"/category/{cat['slug']}/" if cat else "",
+                "tags": fm.get("tags", []),
+                "cover_image": fm.get("cover_image", ""),
+                "cover_alt": fm.get("cover_alt", ""),
+                "promo": bool(fm.get("promo", False)),
+                "html": html,
+            }
+        )
 
     posts.sort(key=lambda x: x.get("date", ""), reverse=True)
 
@@ -234,29 +238,29 @@ def main():
         page["content_bottom"] = bottom
 
         body = post_tpl.render(site=site, page=page, related=rel, build_year=build_year)
-        full = base_tpl.render(site=site, page=page, body=body, related=rel, build_year=build_year)
+        full = base_tpl.render(
+            site=site, page=page, body=body, related=rel, build_year=build_year
+        )
         write(slug_to_out(p["slug"]), full)
         rendered_urls.append(p["url"])
 
     # render pages
     for f in (CONTENT / "pages").glob("*.md"):
         fm, body_md = parse_frontmatter(f.read_text(encoding="utf-8"))
-
-        # home page convention
-        allow_empty = f.stem.lower() in {"home", "index"}
-        if (fm.get("slug") is None or str(fm.get("slug")).strip() == "") and allow_empty:
-            slug = ""
-        else:
-            # 404 convention
-            if f.stem == "404" and not (fm.get("slug") or "").strip():
-                fm["slug"] = "404"
-            slug = auto_slug(fm, fallback=f.stem, used=used_slugs, allow_empty=False)
-
-        if slug not in {"", "404"}:
-            validate_slug(slug, f.name)
-
         html = m.convert(body_md)
         m.reset()
+
+        raw_slug = (fm.get("slug") or "").strip().strip("/")
+        if f.name == "404.md":
+            slug = "404"
+        elif raw_slug == "":
+            # pages can omit slug; then we generate from filename stem
+            slug = slugify_title(f.stem) if f.stem not in ("index", "home") else ""
+        else:
+            slug = raw_slug
+
+        if slug != "":
+            validate_slug(slug, context=f"page file: {f.as_posix()}")
 
         page = {
             "title": fm.get("title", site["site_name"]),
@@ -265,7 +269,9 @@ def main():
             "canonical_url": canonical(site["base_url"], slug),
             "description": fm.get("description", site["default_description"]),
             "meta_title": fm.get("meta_title", fm.get("title", site["site_name"])),
-            "meta_description": fm.get("meta_description", fm.get("description", site["default_description"])),
+            "meta_description": fm.get(
+                "meta_description", fm.get("description", site["default_description"])
+            ),
         }
 
         full = base_tpl.render(site=site, page=page, body=html, related=[], build_year=build_year)
@@ -289,9 +295,16 @@ def main():
             pagination = {
                 "page": page_num,
                 "total_pages": total_pages,
-                "prev_url": (f"/category/{cat['slug']}/" if page_num == 2 else f"/category/{cat['slug']}/page/{page_num - 1}/")
-                if page_num > 1 else None,
-                "next_url": f"/category/{cat['slug']}/page/{page_num + 1}/" if page_num < total_pages else None,
+                "prev_url": (
+                    f"/category/{cat['slug']}/"
+                    if page_num == 2
+                    else f"/category/{cat['slug']}/page/{page_num-1}/"
+                )
+                if page_num > 1
+                else None,
+                "next_url": f"/category/{cat['slug']}/page/{page_num+1}/"
+                if page_num < total_pages
+                else None,
             }
 
             page = {
@@ -310,12 +323,15 @@ def main():
             rendered_urls.append(url)
 
     # search index
-    search_items = [{
-        "title": p["title"],
-        "description": p["description"],
-        "url": p["url"],
-        "tags": " ".join(p.get("tags", [])),
-    } for p in posts]
+    search_items = [
+        {
+            "title": p["title"],
+            "description": p["description"],
+            "url": p["url"],
+            "tags": " ".join(p.get("tags", [])),
+        }
+        for p in posts
+    ]
     write(DIST / "static" / "search-index.json", json.dumps(search_items, ensure_ascii=False))
 
     # sitemap + robots
@@ -328,8 +344,8 @@ def main():
     sitemap = (
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
-        + "\n".join(sitemap_urls) +
-        "\n</urlset>\n"
+        + "\n".join(sitemap_urls)
+        + "\n</urlset>\n"
     )
     write(DIST / "sitemap.xml", sitemap)
 
