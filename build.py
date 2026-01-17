@@ -125,10 +125,25 @@ def main():
 
     # posts
     posts = []
+    used_slugs = set()
     for f in sorted((CONTENT / "posts").glob("*.md")):
         fm, body = parse_frontmatter(f.read_text(encoding="utf-8"))
         html = m.convert(body); m.reset()
-        slug = fm.get("slug","")
+                slug = (fm.get("slug") or "").strip()
+        if not slug:
+            slug = slugify_title(fm.get("title", ""))
+        if not slug:
+            raise ValueError(f"Missing slug and cannot generate from title in file: {f.name}")
+
+        if re.search(r"[^a-z0-9/-]", slug):
+            raise ValueError(f"Invalid slug '{slug}' in file: {f.name} (allowed: a-z, 0-9, '-', '/')")
+
+        if "//" in slug or slug.startswith("/") or slug.endswith("/"):
+            raise ValueError(f"Invalid slug '{slug}' in file: {f.name} (no leading/trailing '/', no '//')")
+
+        if slug in used_slugs:
+            raise ValueError(f"Duplicate slug '{slug}' found (file: {f.name})")
+        used_slugs.add(slug)
         cat_key = fm.get("category","")
         cat = category_map.get(cat_key)
 
