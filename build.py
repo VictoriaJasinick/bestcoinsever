@@ -153,12 +153,7 @@ def render(env: Environment, template_name: str, ctx: Dict[str, Any]) -> str:
     return env.get_template(template_name).render(**ctx)
 
 
-def render_page(env: Environment, inner_template: str, ctx: Dict[str, Any]) -> str:
-    """
-    inner_template (list.html / post.html) is rendered first,
-    then wrapped into base.html via {{ body }}.
-    This guarantees header/footer/menu are always present.
-    """
+def render_wrapped(env: Environment, inner_template: str, ctx: Dict[str, Any]) -> str:
     inner_html = render(env, inner_template, ctx)
     outer_ctx = dict(ctx)
     outer_ctx["body"] = inner_html
@@ -229,14 +224,12 @@ def main() -> None:
 
     sitemap_urls: List[str] = [canonical(site.base_url, "/")]
 
-    # ---------- Pages (about/contact/etc + 404) ----------
+    # ---------- Pages ----------
     if PAGES_DIR.exists():
         for f in sorted(PAGES_DIR.glob("*.md")):
             meta, body = split_frontmatter(read_text(f))
-
             title = str(meta.get("title") or f.stem.replace("-", " ").title()).strip()
             description = str(meta.get("description") or "").strip()
-
             slug = normalize_slug(str(meta.get("slug") or f.stem))
             is_404 = (f.name == "404.md")
 
@@ -268,7 +261,7 @@ def main() -> None:
                 "canonical_url": canonical(site.base_url, rel),
             }
 
-            html = render_page(env, "post.html", ctx)
+            html = render_wrapped(env, "post.html", ctx)
             write_text(out_path, html)
 
     # ---------- Posts ----------
@@ -335,13 +328,13 @@ def main() -> None:
                 "canonical_url": canon,
             }
 
-            html = render_page(env, "post.html", ctx)
+            html = render_wrapped(env, "post.html", ctx)
             write_text(output_path_for_slug(slug), html)
             sitemap_urls.append(canon)
 
     posts.sort(key=lambda x: (x.get("date", ""), x.get("title", "")), reverse=True)
 
-    # ---------- Home (list of posts) ----------
+    # ---------- Home ----------
     home_items = [
         {
             "title": p.get("title", ""),
@@ -356,24 +349,19 @@ def main() -> None:
     home_ctx = {
         "site": site.__dict__,
         "categories": categories,
-        "items": home_items,
-        "page": {
-            "title": site.site_name,
-            "description": site.description,
-            "slug": "",
-            "date": "",
-        },
+        "items": home_items,          # <-- ВАЖНО: items, как в list.html
+        "page": {"title": site.site_name, "description": site.description},
+        "pagination": None,
         "title": site.site_name,
         "page_title": site.site_name,
         "description": site.description,
         "meta_description": site.description,
         "canonical": canonical(site.base_url, "/"),
         "canonical_url": canonical(site.base_url, "/"),
-        "pagination": None,
     }
-    write_text(DIST_DIR / "index.html", render_page(env, "list.html", home_ctx))
+    write_text(DIST_DIR / "index.html", render_wrapped(env, "list.html", home_ctx))
 
-    # ---------- Category pages (paginated) ----------
+    # ---------- Category pages ----------
     posts_by_cat: Dict[str, List[Dict[str, Any]]] = {}
     for p in posts:
         posts_by_cat.setdefault(p.get("category") or "", []).append(p)
@@ -411,15 +399,8 @@ def main() -> None:
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "items": items,
-                "category": cat,
-                "current_category": cat,
-                "page": {
-                    "title": cat["title"],
-                    "description": cat.get("description") or site.description,
-                    "slug": f"category/{slug}",
-                    "date": "",
-                },
+                "items": items,          # <-- ВАЖНО: items, как в list.html
+                "page": {"title": cat["title"], "description": cat.get("description") or site.description},
                 "title": f"{cat['title']} - {site.site_name}",
                 "page_title": f"{cat['title']} - {site.site_name}",
                 "description": cat.get("description") or site.description,
@@ -428,13 +409,13 @@ def main() -> None:
                 "canonical_url": canon,
                 "pagination": {
                     "page": i,
-                    "total_pages": len(chunks),
+                    "total_pages": len(chunks),   # <-- ВАЖНО: total_pages, как в list.html
                     "prev_url": prev_url,
                     "next_url": next_url,
                 },
             }
 
-            write_text(out, render_page(env, "list.html", ctx))
+            write_text(out, render_wrapped(env, "list.html", ctx))
             sitemap_urls.append(canon)
 
     # ---------- Search index ----------
