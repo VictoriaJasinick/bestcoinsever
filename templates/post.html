@@ -1,9 +1,13 @@
+{% extends "base.html" %}
+
+{% block content %}
 <article class="article">
   <header class="article-header">
     <h1>{{ page.title }}</h1>
+
     <p class="article-meta">
-      <span>{{ page.date }}</span>
-      {% if page.category_title %} · <a href="{{ page.category_url }}">{{ page.category_title }}</a>{% endif %}
+      {% if page.date %}<span>{{ page.date }}</span>{% endif %}
+      {% if post and post.category %} · <a href="/category/{{ post.category }}/">{{ post.category }}</a>{% endif %}
     </p>
 
     {% if page.cover_image %}
@@ -11,19 +15,15 @@
     {% endif %}
   </header>
 
-  {% include "optional/slot-top.html" %}
+  {% include "monetization/adsense-top.html" ignore missing %}
 
   <div class="article-content">
-    {{ page.content_top | safe }}
-    {% include "optional/slot-mid.html" %}
-    {{ page.content_bottom | safe }}
+    {{ content_html|safe }}
   </div>
 
-  {% include "optional/slot-bottom.html" %}
+  {% include "monetization/adsense-middle.html" ignore missing %}
+  {% include "monetization/adsense-bottom.html" ignore missing %}
 
-  {% if page.promo %}
-    {% include "optional/promo-box.html" %}
-  {% endif %}
-
-  {% include "widgets/related.html" %}
+  {% include "widgets/related.html" ignore missing %}
 </article>
+{% endblock %}
