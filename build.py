@@ -8,6 +8,8 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import random
+
 import yaml
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markdown import Markdown
@@ -49,6 +51,9 @@ class SiteConfig:
     adsense_enabled: bool = False
     promo_enabled: bool = False
     promo_links: List[Dict[str, str]] = field(default_factory=list)
+
+    # Homepage behavior
+    home_random_posts: int = 24
 
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
@@ -172,6 +177,12 @@ def load_site_config() -> SiteConfig:
     cfg.adsense_enabled = bool(data.get("adsense_enabled", cfg.adsense_enabled))
     cfg.promo_enabled = bool(data.get("promo_enabled", cfg.promo_enabled))
 
+    # Homepage settings
+    try:
+        cfg.home_random_posts = int(data.get("home_random_posts", cfg.home_random_posts))
+    except Exception:
+        pass
+
     nav = data.get("nav") or []
     if isinstance(nav, list):
         cleaned_nav: List[Dict[str, str]] = []
@@ -246,6 +257,26 @@ def paginate(items: List[Any], per_page: int) -> List[List[Any]]:
     if per_page <= 0:
         return [items]
     return [items[i : i + per_page] for i in range(0, len(items), per_page)] or [[]]
+
+
+def pick_home_posts(posts: List[Dict[str, Any]], desired: int) -> List[Dict[str, Any]]:
+    """Pick a stable-yet-changing subset for the homepage.
+
+    For SEO (and sanity), we avoid pure randomness on every build.
+    This shuffles deterministically based on the current UTC date,
+    so the homepage selection changes daily but is stable within a day.
+    """
+    if desired <= 0 or not posts:
+        return []
+
+    # Daily seed: YYYYMMDD + base salt from site name/length
+    today = datetime.utcnow().strftime("%Y%m%d")
+    seed = int(today)
+    rng = random.Random(seed)
+
+    shuffled = posts[:]  # copy
+    rng.shuffle(shuffled)
+    return shuffled[: min(desired, len(shuffled))]
 
 
 def main() -> None:
@@ -394,12 +425,18 @@ def main() -> None:
 
             sitemap_urls.append(canon)
 
-    # Sort posts newest first
-    posts_raw.sort(key=lambda x: (x["post"].get("date", ""), x["post"].get("title", "")), reverse=True)
+    # Sort posts.
+    # If you don't use dates in frontmatter, we keep a stable A->Z order by title.
+    has_any_date = any((p["post"].get("date") or "").strip() for p in posts_raw)
+    if has_any_date:
+        # Newest first (string ISO dates sort correctly).
+        posts_raw.sort(key=lambda x: (x["post"].get("date", ""), x["post"].get("title", "")), reverse=True)
+    else:
+        posts_raw.sort(key=lambda x: (x["post"].get("title", ""), x["post"].get("slug", "")))
     posts = [p["post"] for p in posts_raw]
 
     # Related posts helper
-    def related_for(post: Dict[str, Any], limit: int = 4) -> List[Dict[str, Any]]:
+    def related_for(post: Dict[str, Any], limit: int = 5) -> List[Dict[str, Any]]:
         same_cat = [p for p in posts if p.get("slug") != post.get("slug") and p.get("category") and p.get("category") == post.get("category")]
         if len(same_cat) >= limit:
             return same_cat[:limit]
@@ -427,17 +464,20 @@ def main() -> None:
             "canonical_url": canon,
             "body": item["html"],
             "build_year": build_year,
-            "related": related_for(post_obj, limit=4),
+            "related": related_for(post_obj, limit=5),
         }
 
         write_text(output_path_for_slug(slug), render(env, "post.html", ctx))
 
     # ---------- Home ----------
     home_template = "list.html" if (TEMPLATES_DIR / "list.html").exists() else "base.html"
+    # SEO note: we keep the homepage lightweight and link to a rotating subset of posts.
+    # Discovery for the rest is handled by category pages + sitemap.xml.
+    home_posts = pick_home_posts(posts, desired=max(0, int(site.home_random_posts or 0)))
     home_ctx = {
         "site": site.__dict__,
         "categories": categories,
-        "posts": posts,
+        "posts": home_posts,
         "page": {
             "title": site.site_name,
             "description": site.default_description,
