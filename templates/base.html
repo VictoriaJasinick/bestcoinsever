@@ -1,13 +1,15 @@
 <!doctype html>
-<html lang="{{ site.language }}">
+<html lang="{{ site.language or 'en' }}">
   <head>
     {% include "head.html" %}
+    <!-- страховка, если в head.html нет css -->
+    <link rel="stylesheet" href="/static/css/style.css">
   </head>
   <body>
     {% include "header.html" %}
 
     <main class="container">
-      {{ body | safe }}
+      {% block content %}{% endblock %}
     </main>
 
     {% include "footer.html" %}
