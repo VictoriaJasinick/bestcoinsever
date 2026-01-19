@@ -12,7 +12,6 @@ import yaml
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markdown import Markdown
 
-
 ROOT = Path(__file__).parent.resolve()
 
 CONTENT_DIR = ROOT / "content"
@@ -29,6 +28,8 @@ SITE_YAML = ROOT / "site.yaml"
 DIST_DIR = ROOT / "dist"
 DIST_STATIC_DIR = DIST_DIR / "static"
 
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
+
 
 @dataclass
 class SiteConfig:
@@ -36,9 +37,6 @@ class SiteConfig:
     base_url: str
     description: str
     language: str = "en"
-
-
-FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 
 
 def read_text(path: Path) -> str:
@@ -155,6 +153,18 @@ def render(env: Environment, template_name: str, ctx: Dict[str, Any]) -> str:
     return env.get_template(template_name).render(**ctx)
 
 
+def render_page(env: Environment, inner_template: str, ctx: Dict[str, Any]) -> str:
+    """
+    inner_template (list.html / post.html) is rendered first,
+    then wrapped into base.html via {{ body }}.
+    This guarantees header/footer/menu are always present.
+    """
+    inner_html = render(env, inner_template, ctx)
+    outer_ctx = dict(ctx)
+    outer_ctx["body"] = inner_html
+    return render(env, "base.html", outer_ctx)
+
+
 def load_categories() -> List[Dict[str, Any]]:
     cats: List[Dict[str, Any]] = []
     if not CATEGORIES_DIR.exists():
@@ -215,12 +225,15 @@ def main() -> None:
     copy_static()
 
     categories = load_categories()
+    cat_by_slug = {c["slug"]: c for c in categories}
+
     sitemap_urls: List[str] = [canonical(site.base_url, "/")]
 
-    # ---------- Pages ----------
+    # ---------- Pages (about/contact/etc + 404) ----------
     if PAGES_DIR.exists():
         for f in sorted(PAGES_DIR.glob("*.md")):
             meta, body = split_frontmatter(read_text(f))
+
             title = str(meta.get("title") or f.stem.replace("-", " ").title()).strip()
             description = str(meta.get("description") or "").strip()
 
@@ -240,26 +253,30 @@ def main() -> None:
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "page": {**meta, "title": title, "date": normalize_date(meta.get("date"))},
+                "page": {
+                    **meta,
+                    "title": title,
+                    "date": normalize_date(meta.get("date")),
+                    "content_top": html_body,
+                    "content_bottom": "",
+                },
                 "title": title,
                 "page_title": title,
                 "description": description or site.description,
                 "meta_description": description or site.description,
                 "canonical": canonical(site.base_url, rel),
                 "canonical_url": canonical(site.base_url, rel),
-                "content": html_body,
-                "content_html": html_body,
-                "body": html_body,
             }
 
-            template_name = "post.html" if (TEMPLATES_DIR / "post.html").exists() else "base.html"
-            write_text(out_path, render(env, template_name, ctx))
+            html = render_page(env, "post.html", ctx)
+            write_text(out_path, html)
 
     # ---------- Posts ----------
     posts: List[Dict[str, Any]] = []
     if POSTS_DIR.exists():
         for f in sorted(POSTS_DIR.glob("*.md")):
             meta, body = split_frontmatter(read_text(f))
+
             title = str(meta.get("title") or f.stem.replace("-", " ").title()).strip()
             description = str(meta.get("description") or "").strip()
 
@@ -272,12 +289,16 @@ def main() -> None:
             if not isinstance(tags, list):
                 tags = [str(tags)]
 
-            category = normalize_slug(str(meta.get("category") or ""))
+            category_slug = normalize_slug(str(meta.get("category") or ""))
 
             rel = rel_url_from_slug(slug)
             canon = canonical(site.base_url, rel)
 
             html_body = md.reset().convert(body)
+
+            cat = cat_by_slug.get(category_slug)
+            category_title = cat["title"] if cat else ""
+            category_url = cat["url"] if cat else ""
 
             post_obj = {
                 "title": title,
@@ -286,7 +307,9 @@ def main() -> None:
                 "url": rel,
                 "canonical": canon,
                 "date": post_date,
-                "category": category,
+                "category": category_slug,
+                "category_title": category_title,
+                "category_url": category_url,
                 "tags": tags,
             }
             posts.append(post_obj)
@@ -294,7 +317,15 @@ def main() -> None:
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "page": {**meta, "title": title, "date": post_date},
+                "page": {
+                    **meta,
+                    "title": title,
+                    "date": post_date,
+                    "category_title": category_title,
+                    "category_url": category_url,
+                    "content_top": html_body,
+                    "content_bottom": "",
+                },
                 "post": post_obj,
                 "title": title,
                 "page_title": title,
@@ -302,22 +333,30 @@ def main() -> None:
                 "meta_description": description or site.description,
                 "canonical": canon,
                 "canonical_url": canon,
-                "content": html_body,
-                "content_html": html_body,
-                "body": html_body,
             }
 
-            write_text(output_path_for_slug(slug), render(env, "post.html", ctx))
+            html = render_page(env, "post.html", ctx)
+            write_text(output_path_for_slug(slug), html)
             sitemap_urls.append(canon)
 
     posts.sort(key=lambda x: (x.get("date", ""), x.get("title", "")), reverse=True)
 
-    # ---------- Home ----------
-    home_template = "list.html" if (TEMPLATES_DIR / "list.html").exists() else "base.html"
+    # ---------- Home (list of posts) ----------
+    home_items = [
+        {
+            "title": p.get("title", ""),
+            "description": p.get("description", ""),
+            "url": p.get("url", ""),
+            "date": p.get("date", ""),
+            "category_title": p.get("category_title", ""),
+        }
+        for p in posts
+    ]
+
     home_ctx = {
         "site": site.__dict__,
         "categories": categories,
-        "posts": posts,
+        "items": home_items,
         "page": {
             "title": site.site_name,
             "description": site.description,
@@ -330,13 +369,11 @@ def main() -> None:
         "meta_description": site.description,
         "canonical": canonical(site.base_url, "/"),
         "canonical_url": canonical(site.base_url, "/"),
-        "content": "",
-        "content_html": "",
-        "body": "",
+        "pagination": None,
     }
-    write_text(DIST_DIR / "index.html", render(env, home_template, home_ctx))
+    write_text(DIST_DIR / "index.html", render_page(env, "list.html", home_ctx))
 
-    # ---------- Category pages ----------
+    # ---------- Category pages (paginated) ----------
     posts_by_cat: Dict[str, List[Dict[str, Any]]] = {}
     for p in posts:
         posts_by_cat.setdefault(p.get("category") or "", []).append(p)
@@ -351,16 +388,30 @@ def main() -> None:
             if i == 1:
                 rel = f"/category/{slug}/"
                 out = DIST_DIR / "category" / slug / "index.html"
+                prev_url = None
             else:
                 rel = f"/category/{slug}/page/{i}/"
                 out = DIST_DIR / "category" / slug / "page" / str(i) / "index.html"
+                prev_url = f"/category/{slug}/" if i == 2 else f"/category/{slug}/page/{i-1}/"
 
+            next_url = f"/category/{slug}/page/{i+1}/" if i < len(chunks) else None
             canon = canonical(site.base_url, rel)
+
+            items = [
+                {
+                    "title": p.get("title", ""),
+                    "description": p.get("description", ""),
+                    "url": p.get("url", ""),
+                    "date": p.get("date", ""),
+                    "category_title": cat["title"],
+                }
+                for p in chunk
+            ]
 
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "posts": chunk,
+                "items": items,
                 "category": cat,
                 "current_category": cat,
                 "page": {
@@ -377,17 +428,13 @@ def main() -> None:
                 "canonical_url": canon,
                 "pagination": {
                     "page": i,
-                    "pages": len(chunks),
-                    "has_prev": i > 1,
-                    "has_next": i < len(chunks),
-                    "prev_url": f"/category/{slug}/" if i == 2 else f"/category/{slug}/page/{i-1}/",
-                    "next_url": f"/category/{slug}/page/{i+1}/",
+                    "total_pages": len(chunks),
+                    "prev_url": prev_url,
+                    "next_url": next_url,
                 },
-                "content": "",
-                "content_html": "",
-                "body": "",
             }
-            write_text(out, render(env, home_template, ctx))
+
+            write_text(out, render_page(env, "list.html", ctx))
             sitemap_urls.append(canon)
 
     # ---------- Search index ----------
