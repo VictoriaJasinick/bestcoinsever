@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Tuple
 import yaml
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from markdown import Markdown
+
 
 ROOT = Path(__file__).parent.resolve()
 
@@ -28,15 +29,29 @@ SITE_YAML = ROOT / "site.yaml"
 DIST_DIR = ROOT / "dist"
 DIST_STATIC_DIR = DIST_DIR / "static"
 
-FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
-
 
 @dataclass
 class SiteConfig:
-    site_name: str
-    base_url: str
-    description: str
+    site_name: str = "Best Coins Ever"
+    base_url: str = "https://bestcoinsever.com"
     language: str = "en"
+
+    # Used by includes/head.html
+    default_description: str = "Coin values, errors, and guides."
+    twitter_handle: str = ""
+
+    # Used by includes/header.html
+    nav: List[Dict[str, str]] = field(default_factory=list)
+
+    # Optional flags used by optional includes (safe if absent)
+    use_cookie_banner: bool = True
+    slots_enabled: bool = False
+    adsense_enabled: bool = False
+    promo_enabled: bool = False
+    promo_links: List[Dict[str, str]] = field(default_factory=list)
+
+
+FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n(.*)$", re.DOTALL)
 
 
 def read_text(path: Path) -> str:
@@ -46,34 +61,6 @@ def read_text(path: Path) -> str:
 def write_text(path: Path, content: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content, encoding="utf-8")
-
-
-def load_site_config() -> SiteConfig:
-    if not SITE_YAML.exists():
-        return SiteConfig(
-            site_name="Best Coins Ever",
-            base_url="https://bestcoinsever.com",
-            description="Coin values, errors, and guides.",
-            language="en",
-        )
-    data = yaml.safe_load(read_text(SITE_YAML)) or {}
-    return SiteConfig(
-        site_name=str(data.get("site_name") or data.get("name") or "Best Coins Ever"),
-        base_url=str(data.get("base_url") or "https://bestcoinsever.com").rstrip("/"),
-        description=str(data.get("description") or "Coin values, errors, and guides."),
-        language=str(data.get("language") or "en"),
-    )
-
-
-def split_frontmatter(md_text: str) -> Tuple[Dict[str, Any], str]:
-    m = FRONTMATTER_RE.match(md_text)
-    if not m:
-        return {}, md_text
-    meta = yaml.safe_load(m.group(1)) or {}
-    if not isinstance(meta, dict):
-        meta = {}
-    body = m.group(2)
-    return meta, body
 
 
 def normalize_date(value: Any) -> str:
@@ -138,6 +125,17 @@ def copy_static() -> None:
         shutil.copytree(STATIC_DIR, DIST_STATIC_DIR, dirs_exist_ok=True)
 
 
+def split_frontmatter(md_text: str) -> Tuple[Dict[str, Any], str]:
+    m = FRONTMATTER_RE.match(md_text)
+    if not m:
+        return {}, md_text
+    meta = yaml.safe_load(m.group(1)) or {}
+    if not isinstance(meta, dict):
+        meta = {}
+    body = m.group(2)
+    return meta, body
+
+
 def build_md() -> Markdown:
     return Markdown(extensions=["extra", "tables", "fenced_code", "sane_lists"])
 
@@ -153,11 +151,50 @@ def render(env: Environment, template_name: str, ctx: Dict[str, Any]) -> str:
     return env.get_template(template_name).render(**ctx)
 
 
-def render_wrapped(env: Environment, inner_template: str, ctx: Dict[str, Any]) -> str:
-    inner_html = render(env, inner_template, ctx)
-    outer_ctx = dict(ctx)
-    outer_ctx["body"] = inner_html
-    return render(env, "base.html", outer_ctx)
+def load_site_config() -> SiteConfig:
+    cfg = SiteConfig()
+    if not SITE_YAML.exists():
+        return cfg
+
+    data = yaml.safe_load(read_text(SITE_YAML)) or {}
+    if not isinstance(data, dict):
+        return cfg
+
+    cfg.site_name = str(data.get("site_name") or data.get("name") or cfg.site_name)
+    cfg.base_url = str(data.get("base_url") or cfg.base_url).rstrip("/")
+    cfg.language = str(data.get("language") or cfg.language)
+
+    cfg.default_description = str(data.get("default_description") or data.get("description") or cfg.default_description)
+    cfg.twitter_handle = str(data.get("twitter_handle") or cfg.twitter_handle)
+
+    cfg.use_cookie_banner = bool(data.get("use_cookie_banner", cfg.use_cookie_banner))
+    cfg.slots_enabled = bool(data.get("slots_enabled", cfg.slots_enabled))
+    cfg.adsense_enabled = bool(data.get("adsense_enabled", cfg.adsense_enabled))
+    cfg.promo_enabled = bool(data.get("promo_enabled", cfg.promo_enabled))
+
+    nav = data.get("nav") or []
+    if isinstance(nav, list):
+        cleaned_nav: List[Dict[str, str]] = []
+        for item in nav:
+            if isinstance(item, dict):
+                title = str(item.get("title") or "").strip()
+                url = str(item.get("url") or "").strip()
+                if title and url:
+                    cleaned_nav.append({"title": title, "url": url})
+        cfg.nav = cleaned_nav
+
+    promo_links = data.get("promo_links") or []
+    if isinstance(promo_links, list):
+        cleaned_promos: List[Dict[str, str]] = []
+        for item in promo_links:
+            if isinstance(item, dict):
+                title = str(item.get("title") or "").strip()
+                url = str(item.get("url") or "").strip()
+                if title and url:
+                    cleaned_promos.append({"title": title, "url": url})
+        cfg.promo_links = cleaned_promos
+
+    return cfg
 
 
 def load_categories() -> List[Dict[str, Any]]:
@@ -220,9 +257,13 @@ def main() -> None:
     copy_static()
 
     categories = load_categories()
-    cat_by_slug = {c["slug"]: c for c in categories}
+    categories_by_slug = {c["slug"]: c for c in categories}
 
     sitemap_urls: List[str] = [canonical(site.base_url, "/")]
+
+    build_year = datetime.utcnow().year
+
+    used_slugs: Dict[str, str] = {}
 
     # ---------- Pages ----------
     if PAGES_DIR.exists():
@@ -230,8 +271,9 @@ def main() -> None:
             meta, body = split_frontmatter(read_text(f))
             title = str(meta.get("title") or f.stem.replace("-", " ").title()).strip()
             description = str(meta.get("description") or "").strip()
-            slug = normalize_slug(str(meta.get("slug") or f.stem))
+
             is_404 = (f.name == "404.md")
+            slug = normalize_slug(str(meta.get("slug") or f.stem))
 
             html_body = md.reset().convert(body)
 
@@ -239,42 +281,66 @@ def main() -> None:
                 rel = "/404.html"
                 out_path = DIST_DIR / "404.html"
             else:
+                if slug in used_slugs:
+                    raise ValueError(f"Duplicate slug '{slug}' found (page file: {f.name}, already used by: {used_slugs[slug]})")
+                used_slugs[slug] = f.name
+
                 rel = rel_url_from_slug(slug)
                 out_path = output_path_for_slug(slug)
                 sitemap_urls.append(canonical(site.base_url, rel))
 
+            page_cat_slug = normalize_slug(str(meta.get("category") or ""))
+            cat = categories_by_slug.get(page_cat_slug)
+            page_category_title = cat["title"] if cat else ""
+            page_category_url = cat["url"] if cat else ""
+
+            page = {
+                **meta,
+                "title": title,
+                "description": description,
+                "date": normalize_date(meta.get("date")),
+                "slug": slug,
+                "url": rel,
+                "category": page_cat_slug,
+                "category_title": page_category_title,
+                "category_url": page_category_url,
+                "content_top": html_body,
+                "content_bottom": "",
+            }
+
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "page": {
-                    **meta,
-                    "title": title,
-                    "date": normalize_date(meta.get("date")),
-                    "content_top": html_body,
-                    "content_bottom": "",
-                },
+                "page": page,
                 "title": title,
                 "page_title": title,
-                "description": description or site.description,
-                "meta_description": description or site.description,
+                "description": description or site.default_description,
+                "meta_description": description or site.default_description,
                 "canonical": canonical(site.base_url, rel),
                 "canonical_url": canonical(site.base_url, rel),
+                "body": html_body,
+                "build_year": build_year,
+                "related": [],
             }
 
-            html = render_wrapped(env, "post.html", ctx)
-            write_text(out_path, html)
+            template_name = "post.html" if (TEMPLATES_DIR / "post.html").exists() else "base.html"
+            write_text(out_path, render(env, template_name, ctx))
 
-    # ---------- Posts ----------
-    posts: List[Dict[str, Any]] = []
+    # ---------- Posts (collect first) ----------
+    posts_raw: List[Dict[str, Any]] = []
     if POSTS_DIR.exists():
         for f in sorted(POSTS_DIR.glob("*.md")):
             meta, body = split_frontmatter(read_text(f))
-
             title = str(meta.get("title") or f.stem.replace("-", " ").title()).strip()
             description = str(meta.get("description") or "").strip()
 
             slug = normalize_slug(str(meta.get("slug") or f.stem))
+            if slug in used_slugs:
+                raise ValueError(f"Duplicate slug '{slug}' found (post file: {f.name}, already used by: {used_slugs[slug]})")
+            used_slugs[slug] = f.name
+
             post_date = normalize_date(meta.get("date"))
+            category_slug = normalize_slug(str(meta.get("category") or ""))
 
             tags = meta.get("tags") or []
             if isinstance(tags, str):
@@ -282,16 +348,14 @@ def main() -> None:
             if not isinstance(tags, list):
                 tags = [str(tags)]
 
-            category_slug = normalize_slug(str(meta.get("category") or ""))
-
             rel = rel_url_from_slug(slug)
             canon = canonical(site.base_url, rel)
 
             html_body = md.reset().convert(body)
 
-            cat = cat_by_slug.get(category_slug)
-            category_title = cat["title"] if cat else ""
-            category_url = cat["url"] if cat else ""
+            cat = categories_by_slug.get(category_slug)
+            category_title = cat["title"] if cat else category_slug
+            category_url = cat["url"] if cat else (f"/category/{category_slug}/" if category_slug else "")
 
             post_obj = {
                 "title": title,
@@ -305,61 +369,91 @@ def main() -> None:
                 "category_url": category_url,
                 "tags": tags,
             }
-            posts.append(post_obj)
 
-            ctx = {
-                "site": site.__dict__,
-                "categories": categories,
-                "page": {
-                    **meta,
-                    "title": title,
-                    "date": post_date,
-                    "category_title": category_title,
-                    "category_url": category_url,
-                    "content_top": html_body,
-                    "content_bottom": "",
-                },
-                "post": post_obj,
+            page = {
+                **meta,
                 "title": title,
-                "page_title": title,
-                "description": description or site.description,
-                "meta_description": description or site.description,
-                "canonical": canon,
-                "canonical_url": canon,
+                "description": description,
+                "date": post_date,
+                "slug": slug,
+                "url": rel,
+                "category": category_slug,
+                "category_title": category_title,
+                "category_url": category_url,
+                "content_top": html_body,
+                "content_bottom": "",
             }
 
-            html = render_wrapped(env, "post.html", ctx)
-            write_text(output_path_for_slug(slug), html)
+            posts_raw.append(
+                {
+                    "post": post_obj,
+                    "page": page,
+                    "html": html_body,
+                }
+            )
+
             sitemap_urls.append(canon)
 
-    posts.sort(key=lambda x: (x.get("date", ""), x.get("title", "")), reverse=True)
+    # Sort posts newest first
+    posts_raw.sort(key=lambda x: (x["post"].get("date", ""), x["post"].get("title", "")), reverse=True)
+    posts = [p["post"] for p in posts_raw]
+
+    # Related posts helper
+    def related_for(post: Dict[str, Any], limit: int = 4) -> List[Dict[str, Any]]:
+        same_cat = [p for p in posts if p.get("slug") != post.get("slug") and p.get("category") and p.get("category") == post.get("category")]
+        if len(same_cat) >= limit:
+            return same_cat[:limit]
+        fallback = [p for p in posts if p.get("slug") != post.get("slug") and p not in same_cat]
+        return (same_cat + fallback)[:limit]
+
+    # ---------- Render posts ----------
+    for item in posts_raw:
+        post_obj = item["post"]
+        page = item["page"]
+        slug = post_obj["slug"]
+        rel = post_obj["url"]
+        canon = post_obj["canonical"]
+
+        ctx = {
+            "site": site.__dict__,
+            "categories": categories,
+            "page": page,
+            "post": post_obj,
+            "title": post_obj["title"],
+            "page_title": post_obj["title"],
+            "description": post_obj["description"] or site.default_description,
+            "meta_description": post_obj["description"] or site.default_description,
+            "canonical": canon,
+            "canonical_url": canon,
+            "body": item["html"],
+            "build_year": build_year,
+            "related": related_for(post_obj, limit=4),
+        }
+
+        write_text(output_path_for_slug(slug), render(env, "post.html", ctx))
 
     # ---------- Home ----------
-    home_items = [
-        {
-            "title": p.get("title", ""),
-            "description": p.get("description", ""),
-            "url": p.get("url", ""),
-            "date": p.get("date", ""),
-            "category_title": p.get("category_title", ""),
-        }
-        for p in posts
-    ]
-
+    home_template = "list.html" if (TEMPLATES_DIR / "list.html").exists() else "base.html"
     home_ctx = {
         "site": site.__dict__,
         "categories": categories,
-        "items": home_items,          # <-- ВАЖНО: items, как в list.html
-        "page": {"title": site.site_name, "description": site.description},
-        "pagination": None,
+        "posts": posts,
+        "page": {
+            "title": site.site_name,
+            "description": site.default_description,
+            "slug": "",
+            "date": "",
+        },
         "title": site.site_name,
         "page_title": site.site_name,
-        "description": site.description,
-        "meta_description": site.description,
+        "description": site.default_description,
+        "meta_description": site.default_description,
         "canonical": canonical(site.base_url, "/"),
         "canonical_url": canonical(site.base_url, "/"),
+        "body": "",
+        "build_year": build_year,
     }
-    write_text(DIST_DIR / "index.html", render_wrapped(env, "list.html", home_ctx))
+    write_text(DIST_DIR / "index.html", render(env, home_template, home_ctx))
 
     # ---------- Category pages ----------
     posts_by_cat: Dict[str, List[Dict[str, Any]]] = {}
@@ -376,46 +470,42 @@ def main() -> None:
             if i == 1:
                 rel = f"/category/{slug}/"
                 out = DIST_DIR / "category" / slug / "index.html"
-                prev_url = None
             else:
                 rel = f"/category/{slug}/page/{i}/"
                 out = DIST_DIR / "category" / slug / "page" / str(i) / "index.html"
-                prev_url = f"/category/{slug}/" if i == 2 else f"/category/{slug}/page/{i-1}/"
 
-            next_url = f"/category/{slug}/page/{i+1}/" if i < len(chunks) else None
             canon = canonical(site.base_url, rel)
-
-            items = [
-                {
-                    "title": p.get("title", ""),
-                    "description": p.get("description", ""),
-                    "url": p.get("url", ""),
-                    "date": p.get("date", ""),
-                    "category_title": cat["title"],
-                }
-                for p in chunk
-            ]
 
             ctx = {
                 "site": site.__dict__,
                 "categories": categories,
-                "items": items,          # <-- ВАЖНО: items, как в list.html
-                "page": {"title": cat["title"], "description": cat.get("description") or site.description},
+                "posts": chunk,
+                "category": cat,
+                "current_category": cat,
+                "page": {
+                    "title": cat["title"],
+                    "description": cat.get("description") or site.default_description,
+                    "slug": f"category/{slug}",
+                    "date": "",
+                },
                 "title": f"{cat['title']} - {site.site_name}",
                 "page_title": f"{cat['title']} - {site.site_name}",
-                "description": cat.get("description") or site.description,
-                "meta_description": cat.get("description") or site.description,
+                "description": cat.get("description") or site.default_description,
+                "meta_description": cat.get("description") or site.default_description,
                 "canonical": canon,
                 "canonical_url": canon,
                 "pagination": {
                     "page": i,
-                    "total_pages": len(chunks),   # <-- ВАЖНО: total_pages, как в list.html
-                    "prev_url": prev_url,
-                    "next_url": next_url,
+                    "pages": len(chunks),
+                    "has_prev": i > 1,
+                    "has_next": i < len(chunks),
+                    "prev_url": f"/category/{slug}/" if i == 2 else f"/category/{slug}/page/{i-1}/",
+                    "next_url": f"/category/{slug}/page/{i+1}/",
                 },
+                "body": "",
+                "build_year": build_year,
             }
-
-            write_text(out, render_wrapped(env, "list.html", ctx))
+            write_text(out, render(env, home_template, ctx))
             sitemap_urls.append(canon)
 
     # ---------- Search index ----------
