@@ -5,25 +5,20 @@
   <header class="article-header">
     <h1>{{ page.title }}</h1>
 
-    <p class="article-meta">
-      {% if page.date %}<span>{{ page.date }}</span>{% endif %}
-      {% if post and post.category %} · <a href="/category/{{ post.category }}/">{{ post.category }}</a>{% endif %}
-    </p>
+    {% if post and post.category %}
+      <p class="article-meta">
+        <a href="/category/{{ post.category }}/">{{ post.category }}</a>
+      </p>
+    {% endif %}
 
     {% if page.cover_image %}
       <img class="cover" src="{{ page.cover_image }}" alt="{{ page.cover_alt or page.title }}">
     {% endif %}
   </header>
 
-  {% include "monetization/adsense-top.html" ignore missing %}
-
   <div class="article-content">
-    {{ content_html|safe }}
+    {{ page.content_top | safe }}
+    {{ page.content_bottom | safe }}
   </div>
-
-  {% include "monetization/adsense-middle.html" ignore missing %}
-  {% include "monetization/adsense-bottom.html" ignore missing %}
-
-  {% include "widgets/related.html" ignore missing %}
 </article>
 {% endblock %}
