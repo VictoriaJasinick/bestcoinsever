@@ -484,3 +484,34 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+{% extends "base.html" %}
+
+{% block content %}
+<section class="list">
+  <header class="list-header">
+    <h1>{{ page.title }}</h1>
+    {% if page.description %}<p class="muted">{{ page.description }}</p>{% endif %}
+  </header>
+
+  <div class="cards">
+    {% for post in posts %}
+      <article class="card">
+        <h2 class="card-title"><a href="{{ post.url }}">{{ post.title }}</a></h2>
+        {% if post.description %}<p class="card-desc">{{ post.description }}</p>{% endif %}
+        {% if post.category %}
+          <p class="card-meta muted">{{ post.category }}</p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+
+  {% if pagination %}
+    <nav class="pagination" aria-label="Pagination">
+      {% if pagination.prev_url %}<a class="btn" href="{{ pagination.prev_url }}">← Prev</a>{% endif %}
+      <span class="muted">Page {{ pagination.page }} of {{ pagination.total_pages }}</span>
+      {% if pagination.next_url %}<a class="btn" href="{{ pagination.next_url }}">Next →</a>{% endif %}
+    </nav>
+  {% endif %}
+</section>
+{% endblock %}
